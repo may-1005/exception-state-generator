@@ -8,7 +8,7 @@
   publish = "."
 
   # 构建命令：安装 npm 依赖（archiver 等）
-  command = "npm ci --prefer-offline"
+  command = "npm install"
 
   # Functions 目录
   functions = "netlify/functions"
