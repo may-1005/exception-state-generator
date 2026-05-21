@@ -1,0 +1,69 @@
+# ============================================================
+# Netlify 部署配置文件
+# 文档: https://docs.netlify.com/configure-builds/file-based-configuration/
+# ============================================================
+
+[build]
+  # 发布目录：静态文件（HTML/CSS/JS）所在位置，即项目根目录
+  publish = "."
+
+  # 构建命令：本项目为纯静态 + Functions，无需额外构建步骤
+  # 但需要先安装依赖（archiver 等），所以执行 npm ci
+  command = "npm ci --prefer-offline"
+
+  # Functions 目录：Netlify Serverless 函数存放路径
+  functions = "netlify/functions"
+
+  # ---- Node.js 版本：必须 18 或以上 ----
+  [build.environment]
+    NODE_VERSION = "20"
+
+# ============================================================
+# Functions 运行时配置
+# ============================================================
+[functions]
+  # 单次执行超时时间（秒）
+  # 调用智谱 GLM-5V-Turbo API 可能耗时较长，设为 120 秒
+  timeout = 120
+
+  # 内存分配（MB），处理图片 base64 和 ZIP 打包需要足够内存
+  memory = 512
+
+  # Node.js 运行时版本（与构建环境保持一致）
+  node_bundler = "esbuild"
+
+# ============================================================
+# 路由规则
+# ============================================================
+
+# SPA 模式：所有前端路由回退到 index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  # 排除 Functions 路径和静态资源，避免误拦截
+  conditions = {Force = false}
+
+# 确保 Functions 路径不被上面的 catch-all 规则拦截
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# ============================================================
+# 安全头配置
+# ============================================================
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Functions 响应允许跨域（前端调用后端 API 需要）
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"

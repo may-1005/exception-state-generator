@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>异常状态生成器 - Exception State Generator</title>
+    <style>
+        /* ========================================
+         * 主题色彩系统 — 深蓝 + 强调色
+         * ======================================== */
+        :root {
+            --bg-primary: #0F0F1A;            /* 页面深色背景 */
+            --bg-surface: #1A1A2E;           /* 卡片/容器背景（主色调） */
+            --bg-surface-hover: #222340;     /* 容器悬停态 */
+            --bg-input: #16162A;             /* 输入框背景 */
+            --accent: #4F6FEE;               /* 强调色 */
+            --accent-hover: #3D5BD4;         /* 强调色悬停 */
+            --accent-light: rgba(79, 111, 238, 0.12);  /* 强调色浅底 */
+            --accent-glow: rgba(79, 111, 238, 0.25);   /* 强调色光晕 */
+            --text-primary: #E8EAF0;          /* 主文字 */
+            --text-secondary: #8B8FA3;        /* 次要文字 */
+            --text-muted: #5A5D70;            /* 弱化文字 */
+            --success: #34D399;              /* 成功绿 */
+            --error: #F87171;                /* 错误红 */
+            --warning: #FBBF24;              /* 警告黄 */
+            --border: rgba(255,255,255,0.08); /* 边框色 */
+            --border-active: rgba(79,111,238,0.5); /* 激活边框 */
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
+        /* ========================================
+         * 基础重置
+         * ======================================== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* ========================================
+         * 页面布局
+         * ======================================== */
+        .container {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 48px 20px 100px;
+        }
+
+        /* ---- 页头 ---- */
+        .header { text-align: center; margin-bottom: 36px; }
+        .header h1 {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* ========================================
+         * 卡片容器
+         * ======================================== */
+        .card {
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title svg { width: 18px; height: 18px; color: var(--accent); opacity: 0.8; }
+
+        /* ========================================
+         * 上传区域（拖拽 + 点击）
+         * ======================================== */
+        .upload-zone {
+            border: 2px dashed rgba(255,255,255,0.12);
+            border-radius: var(--radius-md);
+            padding: 44px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+            background: rgba(255,255,255,0.02);
+        }
+        .upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+        .upload-zone.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            box-shadow: 0 0 24px var(--accent-glow);
+        }
+        .upload-zone.has-image {
+            border-style: solid;
+            border-color: var(--success);
+            background: rgba(52,211,153,0.06);
+            padding: 16px 20px;
+        }
+
+        /* 上传提示图标和文字 */
+        .upload-icon {
+            width: 48px; height: 48px; margin: 0 auto 14px;
+            color: var(--text-muted);
+            transition: color 0.25s;
+        }
+        .upload-zone:hover .upload-icon { color: var(--accent); }
+        .upload-zone.has-image .upload-icon { display: none; }
+
+        .upload-text { color: var(--text-secondary); font-size: 14px; }
+        .upload-hint { color: var(--accent); font-weight: 500; font-size: 13px; margin-top: 6px; }
+        .upload-zone.has-image .upload-text,
+        .upload-zone.has-image .upload-hint { display: none; }
+
+        #fileInput { display: none; }
+
+        /* 图片预览条 */
+        .image-preview {
+            display: none;
+            align-items: center;
+            gap: 14px;
+        }
+        .upload-zone.has-image .image-preview { display: flex; }
+
+        .image-preview img {
+            height: 72px;
+            max-width: 140px;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: #fff;
+        }
+        .image-preview .image-info { flex: 1; text-align: left; min-width: 0; }
+        .image-preview .image-name {
+            font-weight: 500; font-size: 13px;
+            word-break: break-all; color: var(--text-primary);
+        }
+        .image-preview .image-size { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .btn-remove {
+            flex-shrink: 0;
+            background: none; border: 1px solid var(--border);
+            color: var(--text-secondary); cursor: pointer;
+            padding: 6px 12px; font-size: 12px; border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+        .btn-remove:hover { border-color: var(--error); color: var(--error); background: rgba(248,113,113,0.08); }
+
+        /* ========================================
+         * Pixso 链接输入框
+         * ======================================== */
+        .pixso-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            font-size: 14px; color: var(--text-primary);
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .pixso-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        .pixso-input::placeholder { color: var(--text-muted); }
+
+        /* ========================================
+         * 生成按钮
+         * ======================================== */
+        .btn-generate {
+            width: 100%;
+            padding: 15px 24px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            letter-spacing: 0.3px;
+        }
+        .btn-generate:hover:not(:disabled) {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 20px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+        .btn-generate:active:not(:disabled) { transform: translateY(0); }
+        .btn-generate:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* 旋转加载动画 */
+        .spinner {
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ========================================
+         * 进度步骤指示器
+         * ======================================== */
+        .progress-steps {
+            display: none;
+            margin-top: 18px;
+            padding: 16px 20px;
+            background: var(--bg-surface);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+        }
+        .progress-steps.active { display: block; animation: fadeIn 0.3s ease; }
+
+        .step {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 0; font-size: 13px;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+        .step.active { color: var(--accent); font-weight: 500; }
+        .step.completed { color: var(--success); }
+
+        .step-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: currentColor; flex-shrink: 0;
+        }
+        .step.active .step-dot { animation: pulse 1.5s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+            50% { opacity: 0.5; box-shadow: 0 0 0 4px transparent; }
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ========================================
+         * 结果展示区（默认隐藏）
+         * ======================================== */
+        .result-section { display: none; }
+        .result-section.visible {
+            display: block;
+            animation: slideUp 0.4s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 18px;
+        }
+        .result-title {
+            font-size: 16px; font-weight: 600;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .result-title .check-icon { color: var(--success); }
+
+        /* 文件列表 */
+        .file-list {
+            list-style: none;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .file-list li {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 11px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        .file-list li:last-child { border-bottom: none; }
+        .file-list li:hover { background: rgba(255,255,255,0.03); }
+
+        .file-name {
+            display: flex; align-items: center; gap: 9px;
+            color: var(--text-primary);
+        }
+        .file-icon { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+        .file-badge {
+            font-size: 11px; color: var(--text-muted);
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 10px;
+        }
+
+        /* 操作按钮组 */
+        .action-buttons { display: flex; gap: 12px; }
+
+        .btn-download {
+            flex: 1;
+            padding: 13px 20px;
+            background: var(--accent);
+            color: #fff; border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px; font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-download:hover { background: var(--accent-hover); box-shadow: 0 4px 16px var(--accent-glow); }
+
+        .btn-reset {
+            flex: 1;
+            padding: 13px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            font-size: 14px; font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-reset:hover { border-color: var(--text-muted); color: var(--text-primary); background: rgba(255,255,255,0.03); }
+
+        /* 预览提示 */
+        .preview-hint {
+            margin-top: 16px; padding: 12px 16px;
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.2);
+            border-radius: var(--radius-sm);
+            font-size: 12.5px; color: var(--warning);
+            display: flex; align-items: flex-start; gap: 8px; line-height: 1.55;
+        }
+        .preview-hint svg { flex-shrink: 0; margin-top: 1px; }
+
+        /* ========================================
+         * 消息提示
+         * ======================================== */
+        .message-box {
+            padding: 13px 18px; border-radius: var(--radius-md);
+            font-size: 13.5px; margin-bottom: 16px;
+            display: none; line-height: 1.55;
+        }
+        .message-box.error {
+            display: block;
+            background: rgba(248,113,113,0.08);
+            border: 1px solid rgba(248,113,113,0.2);
+            color: var(--error);
+        }
+        .message-box.warning {
+            display: block;
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.2);
+            color: var(--warning);
+        }
+        .message-box.info {
+            display: block;
+            background: var(--accent-light);
+            border: 1px solid var(--border-active);
+            color: var(--accent);
+        }
+
+        /* ========================================
+         * 底部信息栏
+         * ======================================== */
+        .footer {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            text-align: center;
+            padding: 14px 20px;
+            background: linear-gradient(to top, var(--bg-primary) 60%, transparent);
+            font-size: 12px; color: var(--text-muted);
+            z-index: 1;
+        }
+        .footer span { color: var(--accent); opacity: 0.7; }
+
+        /* ========================================
+         * 响应式适配
+         * ======================================== */
+        @media (max-width: 600px) {
+            .container { padding: 32px 16px 120px; }
+            .header h1 { font-size: 22px; }
+            .card { padding: 18px; }
+            .action-buttons { flex-direction: column; }
+            .image-preview { flex-wrap: wrap; }
+            .image-preview img { max-width: 100%; height: 60px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- ==================== 页头 ==================== -->
+        <header class="header">
+            <h1>Exception State Generator</h1>
+            <p>上传 UI 设计截图，自动生成 7 种标准异常状态页面</p>
+        </header>
+
+        <!-- ==================== 卡片：截图上传 ==================== -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <path d="M21 15l-5-5L5 21"/>
+                </svg>
+                设计稿截图
+            </div>
+
+            <!-- 拖拽 / 点击 / 粘贴上传 -->
+            <div class="upload-zone" id="uploadZone">
+                <input type="file" id="fileInput" accept="image/*">
+
+                <!-- 默认：上传引导 -->
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
+                <div class="upload-hint">支持 PNG / JPG / WebP，也可直接粘贴截图</div>
+
+                <!-- 已上传：缩略图预览 -->
+                <div class="image-preview" id="imagePreview">
+                    <img id="previewImg" src="" alt="预览图">
+                    <div class="image-info">
+                        <div class="image-name" id="imageName"></div>
+                        <div class="image-size" id="imageSize"></div>
+                    </div>
+                    <button class="btn-remove" id="btnRemoveImage" type="button">移除</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 卡片：Pixso 链接 ==================== -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                </svg>
+                Pixso 链接（可选）
+            </div>
+            <input type="text" class="pixso-input" id="pixsoLinkInput"
+                   placeholder="粘贴 Pixso 分享链接，例如 https://pixso.cn/design/...">
+        </div>
+
+        <!-- ==================== 消息提示 ==================== -->
+        <div class="message-box" id="messageBox"></div>
+
+        <!-- ==================== 生成按钮 ==================== -->
+        <button class="btn-generate" id="btnGenerate" disabled>
+            <span id="btnText">生成异常状态</span>
+        </button>
+
+        <!-- ==================== 进度指示 ==================== -->
+        <div class="progress-steps" id="progressSteps">
+            <div class="step active" id="step1"><span class="step-dot"></span>正在分析 UI 截图...</div>
+            <div class="step" id="step2"><span class="step-dot"></span>正在生成异常状态代码...</div>
+            <div class="step" id="step3"><span class="step-dot"></span>正在打包下载文件...</div>
+        </div>
+
+        <!-- ==================== 结果展示（默认隐藏）==================== -->
+        <div class="result-section" id="resultSection">
+            <div class="card">
+                <div class="result-header">
+                    <div class="result-title">
+                        <svg class="check-icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        生成完成
+                    </div>
+                </div>
+
+                <!-- 文件列表 -->
+                <ul class="file-list" id="fileList"></ul>
+
+                <!-- 按钮：下载 + 重置 -->
+                <div class="action-buttons">
+                    <button class="btn-download" id="btnDownload">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        下载所有状态
+                    </button>
+                    <button class="btn-reset" id="btnReset">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        重新生成
+                    </button>
+                </div>
+
+                <!-- 使用提示 -->
+                <div class="preview-hint">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <span>解压后用浏览器打开 index.html 可切换预览所有状态，每个 HTML 文件也可单独打开。无需启动服务器。</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 底部信息栏 ==================== -->
+    <footer class="footer">
+        内置 7 种异常状态规范 &nbsp;<span>&middot;</span>&nbsp; 基于<span>智谱 GLM-5V-Turbo</span>
+    </footer>
+
+    <!-- ============================================================
+         JavaScript
+         ============================================================ -->
+    <script>
+        /** 全局状态 */
+        const state = {
+            imageData: null,
+            imageName: '',
+            resultData: null,
+            isGenerating: false,
+        };
+
+        /** DOM 引用缓存 */
+        const dom = {
+            uploadZone: document.getElementById('uploadZone'),
+            fileInput: document.getElementById('fileInput'),
+            imagePreview: document.getElementById('imagePreview'),
+            previewImg: document.getElementById('previewImg'),
+            imageName: document.getElementById('imageName'),
+            imageSize: document.getElementById('imageSize'),
+            btnRemoveImage: document.getElementById('btnRemoveImage'),
+            pixsoLinkInput: document.getElementById('pixsoLinkInput'),
+            messageBox: document.getElementById('messageBox'),
+            btnGenerate: document.getElementById('btnGenerate'),
+            btnText: document.getElementById('btnText'),
+            progressSteps: document.getElementById('progressSteps'),
+            step1: document.getElementById('step1'),
+            step2: document.getElementById('step2'),
+            step3: document.getElementById('step3'),
+            resultSection: document.getElementById('resultSection'),
+            fileList: document.getElementById('fileList'),
+            btnDownload: document.getElementById('btnDownload'),
+            btnReset: document.getElementById('btnReset'),
+        };
+
+        /* ---------- 工具函数 ---------- */
+
+        function showMessage(text, type = 'error') {
+            dom.messageBox.textContent = text;
+            dom.messageBox.className = `message-box ${type}`;
+        }
+        function hideMessage() {
+            dom.messageBox.className = 'message-box';
+            dom.messageBox.textContent = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function updateButtonState() {
+            const hasImage = !!state.imageData;
+            const hasLink = dom.pixsoLinkInput.value.trim().length > 0;
+            dom.btnGenerate.disabled = !hasImage && !hasLink;
+        }
+
+        /**
+         * 切换生成中 UI 状态
+         * @param {boolean} loading
+         */
+        function setGeneratingState(loading) {
+            state.isGenerating = loading;
+            dom.btnGenerate.disabled = loading;
+
+            if (loading) {
+                dom.btnText.innerHTML = '<span class="spinner"></span>正在生成...';
+                dom.progressSteps.classList.add('active');
+                hideMessage();
+                dom.resultSection.classList.remove('visible');
+            } else {
+                dom.btnText.textContent = '生成异常状态';
+                dom.progressSteps.classList.remove('active');
+                [dom.step1, dom.step2, dom.step3].forEach(s => s.classList.remove('active', 'completed'));
+            }
+        }
+
+        function setProgressStep(n) {
+            for (let i = 1; i <= 3; i++) {
+                const el = dom[`step${i}`];
+                el.classList.remove('active', 'completed');
+                if (i < n) el.classList.add('completed');
+                else if (i === n) el.classList.add('active');
+            }
+        }
+
+        /* ---------- 图片上传（拖拽 / 点击 / 粘贴）---------- */
+
+        function handleImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showMessage('请选择图片文件（PNG、JPG、WebP）', 'error');
+                return;
+            }
+            const maxSize = 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showMessage(`图片过大（${formatFileSize(file.size)}），请控制在 10MB 以内`, 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                state.imageData = e.target.result;
+                state.imageName = file.name;
+
+                dom.previewImg.src = e.target.result;
+                dom.imageName.textContent = file.name;
+                dom.imageSize.textContent = formatFileSize(file.size);
+
+                dom.uploadZone.classList.add('has-image');
+                hideMessage();
+                updateButtonState();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 点击上传区域 → 触发文件选择
+        dom.uploadZone.addEventListener('click', function(e) {
+            if (e.target.closest('.btn-remove')) return;
+            dom.fileInput.click();
+        });
+
+        // 文件选择变化
+        dom.fileInput.addEventListener('change', function(e) {
+            if (e.target.files[0]) handleImageFile(e.target.files[0]);
+            this.value = '';
+        });
+
+        // 拖拽事件
+        dom.uploadZone.addEventListener('dragover', e => { e.preventDefault(); this.classList.add('drag-over'); });
+        dom.uploadZone.addEventListener('dragleave', e => { e.preventDefault(); this.classList.remove('drag-over'); });
+        dom.uploadZone.addEventListener('drop', e => {
+            e.preventDefault(); this.classList.remove('drag-over');
+            if (e.dataTransfer.files[0]) handleImageFile(e.dataTransfer.files[0]);
+        });
+
+        // 移除图片
+        dom.btnRemoveImage.addEventListener('click', function(e) {
+            e.stopPropagation();
+            state.imageData = null;
+            state.imageName = '';
+            dom.previewImg.src = '';
+            dom.imageName.textContent = '';
+            dom.imageSize.textContent = '';
+            dom.uploadZone.classList.remove('has-image');
+            updateButtonState();
+        });
+
+        // 粘贴板上传
+        document.addEventListener('paste', e => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const f = item.getAsFile();
+                    if (f) handleImageFile(f);
+                    break;
+                }
+            }
+        });
+
+        dom.pixsoLinkInput.addEventListener('input', updateButtonState);
+
+        /* ---------- 核心功能：调用后端 API ---------- */
+
+        async function generateExceptionStates() {
+            if (state.isGenerating) return;
+            setGeneratingState(true);
+
+            try {
+                setProgressStep(1);
+
+                const response = await fetch('/.netlify/functions/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: state.imageData || undefined,
+                        pixsoLink: dom.pixsoLinkInput.value.trim() || undefined,
+                    }),
+                });
+
+                setProgressStep(2);
+                const result = await response.json();
+
+                if (!response.ok) throw new Error(result.error || `请求失败 (${response.status})`);
+                if (!result.success && result.message) {
+                    showMessage(result.message, 'warning');
+                    setGeneratingState(false);
+                    return;
+                }
+
+                setProgressStep(3);
+                state.resultData = result;
+                renderResult(result);
+
+                setTimeout(() => setGeneratingState(false), 600);
+            } catch (err) {
+                console.error('[Frontend] 生成出错:', err);
+                showMessage(`生成失败：${err.message}`, 'error');
+                setGeneratingState(false);
+            }
+        }
+
+        function renderResult(result) {
+            dom.fileList.innerHTML = result.files.map(f => `
+                <li>
+                    <span class="file-name">
+                        <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        ${f.name}
+                    </span>
+                    <span class="file-badge">HTML</span>
+                </li>
+            `).join('');
+
+            dom.resultSection.classList.add('visible');
+            dom.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        /* ---------- 下载 ZIP ---------- */
+
+        function downloadZip() {
+            if (!state.resultData?.fileData) {
+                showMessage('没有可下载的数据，请先生成', 'warning');
+                return;
+            }
+            try {
+                const bin = atob(state.resultData.fileData);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const blob = new Blob([bytes], { type: 'application/zip' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = state.resultData.fileName || 'exception-states.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('[Frontend] 下载出错:', err);
+                showMessage('下载失败，请重试', 'error');
+            }
+        }
+
+        /* ---------- 重置 ---------- */
+
+        function resetAll() {
+            state.resultData = null;
+            dom.resultSection.classList.remove('visible');
+            hideMessage();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        /* ---------- 事件绑定 ---------- */
+
+        dom.btnGenerate.addEventListener('click', generateExceptionStates);
+        dom.btnDownload.addEventListener('click', downloadZip);
+        dom.btnReset.addEventListener('click', resetAll);
+
+        // Ctrl+Enter 快捷键触发生成
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !dom.btnGenerate.disabled) {
+                generateExceptionStates();
+            }
+        });
+    </script>
+</body>
+</html>
