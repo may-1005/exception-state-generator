@@ -35,6 +35,11 @@ const DEFAULT_MODEL = "GLM-5V-Turbo";
 /** API 请求超时时间（毫秒） */
 const API_TIMEOUT_MS = 120_000;
 
+/** 重试配置：最大重试次数 */
+const MAX_RETRIES = 3;
+/** 重试基础等待时间（毫秒） */
+const RETRY_BASE_DELAY_MS = 5_000;
+
 /**
  * CORS 响应头 — 允许前端跨域调用此 Function
  */
@@ -118,6 +123,14 @@ function jsonResponse(statusCode, body) {
 /** 返回错误 JSON 响应 */
 function jsonError(statusCode, message) {
   return jsonResponse(statusCode, { success: false, error: message });
+}
+
+/**
+ * 异步等待指定毫秒数（用于重试退避）
+ * @param {number} ms - 等待时间（毫秒）
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ========================================
@@ -293,29 +306,84 @@ ${guidelines}
     max_tokens: 32000,
   };
 
-  // --- 发送请求（带 120 秒超时控制）---
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-
+  // --- 发送请求（带指数退避重试，最多 3 次）---
   let response;
-  try {
-    response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-  } catch (fetchError) {
-    clearTimeout(timeoutId);
-    if (fetchError.name === "AbortError") {
-      throw new Error("AI 模型响应超时（超过 120 秒），请稍后重试或尝试上传更小的截图");
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    try {
+      console.log(`[GLM API] 第 ${attempt}/${MAX_RETRIES} 次请求...`);
+
+      response = await fetch(`${ZHIPU_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      // 请求成功发出，清除超时
+      clearTimeout(timeoutId);
+
+      // --- 遇到 429（频率限制），等待后重试 ---
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get("Retry-After");
+        const waitMs = retryAfterHeader
+          ? parseInt(retryAfterHeader, 10) * 1000
+          : RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1); // 指数退避：5s, 10s, 20s
+
+        console.warn(`[GLM API] 429 限流，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`);
+
+        if (attempt < MAX_RETRIES) {
+          await sleep(waitMs);
+          continue; // 进入下一次重试
+        } else {
+          throw new Error(
+            `API 调用频率超限，已重试 ${MAX_RETRIES} 次仍被限流。请稍后再试。`
+          );
+        }
+      }
+
+      // --- 遇到 5xx 服务端错误，也进行重试 ---
+      if (response.status >= 500 && attempt < MAX_RETRIES) {
+        const waitMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(
+          `[GLM API] 服务端错误 ${response.status}，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+
+      // 成功或非重试类错误，跳出循环
+      break;
+
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+
+      // 超时不重试（120秒已足够长）
+      if (fetchError.name === "AbortError") {
+        throw new Error("AI 模型响应超时（超过 120 秒），请稍后重试或尝试上传更小的截图");
+      }
+
+      // 网络层错误（DNS、连接拒绝等），可重试
+      lastError = fetchError;
+      if (attempt < MAX_RETRIES) {
+        const waitMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(
+          `[GLM API] 网络异常：${fetchError.message}，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+
+      // 重试次数耗尽，抛出最后一次错误
+      throw new Error(`网络请求失败（已重试 ${MAX_RETRIES} 次）：${fetchError.message}`);
     }
-    throw new Error(`网络请求失败：${fetchError.message}`);
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   // --- 处理 HTTP 错误状态码 ---
