@@ -1,25 +1,14 @@
 # ============================================================
 # Netlify 部署配置文件
-# 文档: https://docs.netlify.com/configure-builds/file-based-configuration/
 # ============================================================
 
 [build]
-  # 发布目录：静态文件（HTML/CSS/JS）所在位置，即项目根目录
   publish = "."
-
-  # 构建命令：安装 npm 依赖（archiver 等）
   command = "npm install"
-
-  # Functions 目录
   functions = "netlify/functions"
 
-  # ---- Node.js 版本 ----
   [build.environment]
     NODE_VERSION = "20"
-
-# ============================================================
-# 路由规则
-# ============================================================
 
 # SPA 模式：前端路由回退到 index.html
 [[redirects]]
@@ -27,15 +16,7 @@
   to = "/index.html"
   status = 200
 
-# 确保 Functions 路径不被 catch-all 规则拦截
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-
-# ============================================================
 # 安全头
-# ============================================================
 [[headers]]
   for = "/*"
   [headers.values]
