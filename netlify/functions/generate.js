@@ -495,9 +495,9 @@ ${guidelines}
   }
 
   // 提取 AI 生成的文本内容
-  const rawText = result?.choices?.[0]?.message?.content || "";
+  const aiContent = result?.choices?.[0]?.message?.content || "";
 
-  if (!rawText) {
+  if (!aiContent) {
     console.error("[Zhipu API] 空响应:", JSON.stringify(result));
     throw new Error("AI 模型返回了空的结果，可能是输入图片过大或服务暂时异常");
   }
@@ -505,9 +505,9 @@ ${guidelines}
   // --- 解析 AI 返回的 JSON（提取 files 数组）---
   let parsedFiles;
   try {
-    parsedFiles = parseAIGeneratedJSON(rawText);
+    parsedFiles = parseAIGeneratedJSON(aiContent);
   } catch (parseError) {
-    console.error("[generate] JSON 解析失败，原始文本前 500 字符:", rawText.slice(0, 500));
+    console.error("[generate] JSON 解析失败，原始文本前 500 字符:", aiContent.slice(0, 500));
     throw new Error(
       `AI 返回的内容格式不符合要求，无法提取文件列表。原因：${parseError.message}`
     );
