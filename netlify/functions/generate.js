@@ -35,10 +35,12 @@ const DEFAULT_MODEL = "GLM-5V-Turbo";
 /** API 请求超时时间（毫秒） */
 const API_TIMEOUT_MS = 120_000;
 
-/** 重试配置：最大重试次数 */
-const MAX_RETRIES = 3;
-/** 重试基础等待时间（毫秒） */
-const RETRY_BASE_DELAY_MS = 5_000;
+/** 重试配置 */
+const MAX_RETRIES = 2;
+/** 429 限流后等待时间（毫秒）—— 不急于重试，给 API 冷却时间 */
+const RATE_LIMIT_DELAY_MS = 60_000;
+/** 5xx 服务端错误后的等待基础时间（毫秒） */
+const SERVER_ERROR_BASE_DELAY_MS = 15_000;
 
 /**
  * CORS 响应头 — 允许前端跨域调用此 Function
@@ -373,7 +375,7 @@ ${guidelines}
     max_tokens: 32000,
   };
 
-  // --- 发送请求（带指数退避重试，最多 3 次）---
+  // --- 发送请求（慢速重试策略：不急于重试）---
   let response;
   let lastError;
 
@@ -394,33 +396,35 @@ ${guidelines}
         signal: controller.signal,
       });
 
-      // 请求成功发出，清除超时
       clearTimeout(timeoutId);
 
-      // --- 遇到 429（频率限制），等待后重试 ---
+      // --- 429 频率限制：固定等 60 秒再重试，给 API 充分冷却时间 ---
       if (response.status === 429) {
         const retryAfterHeader = response.headers.get("Retry-After");
         const waitMs = retryAfterHeader
           ? parseInt(retryAfterHeader, 10) * 1000
-          : RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1); // 指数退避：5s, 10s, 20s
+          : RATE_LIMIT_DELAY_MS;
 
-        console.warn(`[GLM API] 429 限流，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`);
+        console.warn(
+          `[GLM API] 429 限流，等待 ${Math.round(waitMs / 1000)}s 后重试 (${attempt}/${MAX_RETRIES})`
+        );
 
         if (attempt < MAX_RETRIES) {
           await sleep(waitMs);
-          continue; // 进入下一次重试
+          continue;
         } else {
           throw new Error(
-            `API 调用频率超限，已重试 ${MAX_RETRIES} 次仍被限流。请稍后再试。`
+            `API 调用频率超限，已等待冷却并重试 ${MAX_RETRIES} 次。` +
+            `\n建议：换一个 API Key 或等待几分钟后重试。`
           );
         }
       }
 
-      // --- 遇到 5xx 服务端错误，也进行重试 ---
+      // --- 5xx 服务端错误：慢速重试 ---
       if (response.status >= 500 && attempt < MAX_RETRIES) {
-        const waitMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        const waitMs = SERVER_ERROR_BASE_DELAY_MS * attempt; // 15s, 30s
         console.warn(
-          `[GLM API] 服务端错误 ${response.status}，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`
+          `[GLM API] 服务端错误 ${response.status}，等待 ${Math.round(waitMs / 1000)}s 后重试 (${attempt}/${MAX_RETRIES})`
         );
         await sleep(waitMs);
         continue;
@@ -432,23 +436,22 @@ ${guidelines}
     } catch (fetchError) {
       clearTimeout(timeoutId);
 
-      // 超时不重试（120秒已足够长）
+      // 超时不重试
       if (fetchError.name === "AbortError") {
         throw new Error("AI 模型响应超时（超过 120 秒），请稍后重试或尝试上传更小的截图");
       }
 
-      // 网络层错误（DNS、连接拒绝等），可重试
+      // 网络层错误：慢速重试
       lastError = fetchError;
       if (attempt < MAX_RETRIES) {
-        const waitMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        const waitMs = SERVER_ERROR_BASE_DELAY_MS * attempt;
         console.warn(
-          `[GLM API] 网络异常：${fetchError.message}，等待 ${waitMs / 1000}s 后重试 (${attempt}/${MAX_RETRIES})`
+          `[GLM API] 网络异常：${fetchError.message}，等待 ${Math.round(waitMs / 1000)}s 后重试 (${attempt}/${MAX_RETRIES})`
         );
         await sleep(waitMs);
         continue;
       }
 
-      // 重试次数耗尽，抛出最后一次错误
       throw new Error(`网络请求失败（已重试 ${MAX_RETRIES} 次）：${fetchError.message}`);
     }
   }
