@@ -1,0 +1,3 @@
+[submodule "exception-state-generator"]
+	path = exception-state-generator
+	url = https://github.com/may-1005/exception-state-generator.git
