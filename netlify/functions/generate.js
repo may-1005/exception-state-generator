@@ -30,7 +30,7 @@ const archiver = require("archiver");
 const ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 
 /** 默认模型名称 */
-const DEFAULT_MODEL = "GLM-5V-Turbo";
+const DEFAULT_MODEL = "glm-4.6v";
 
 /** API 请求超时时间（毫秒） */
 const API_TIMEOUT_MS = 120_000;
@@ -56,6 +56,7 @@ const CORS_HEADERS = {
 // 主处理函数入口
 // ========================================
 exports.handler = async (event, context) => {
+  console.log('=== DEPLOYED CODE v3 - glm-4.6v ===');
   // --- OPTIONS 预检请求 ---
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: CORS_HEADERS, body: "" };
@@ -87,8 +88,8 @@ exports.handler = async (event, context) => {
     // 3. 读取异常状态规范文件
     const guidelinesText = readGuidelinesFile();
 
-    // 4. 调用 GLM-5V-Turbo：一次性完成视觉分析 + HTML 生成
-    console.log("[generate] 开始调用 GLM-5V-Turbo 生成异常状态...");
+    // 4. 调用模型：一次性完成视觉分析 + HTML 生成
+    console.log(`[generate] 开始调用 ${model} 生成异常状态...`);
     const files = await callGLMAPI(image, guidelinesText);
 
     console.log(`[generate] 成功生成 ${files.length} 个文件，开始打包 ZIP...`);
@@ -190,15 +191,8 @@ function readGuidelinesFile() {
     }
   }
 
-  try {
-    const content = fs.readFileSync(filePath, "utf-8");
-    console.log("[guidelines] 成功读取规范文件，长度:", content.length);
-    return content;
-  } catch (error) {
-    console.warn("[guidelines] 无法读取规范文件，使用内置兜底规范:", error.message);
-    // 如果文件读取失败，返回一个精简版兜底规范，确保功能不中断
-    return getFallbackGuidelines();
-  }
+  // 如果所有路径都失败了，使用内置兜底规范
+  return getFallbackGuidelines();
 }
 
 /** 内置完整规范 —— 作为主要规范来源（Netlify 部署后外部文件不可访问） */
@@ -275,11 +269,11 @@ function getFallbackGuidelines() {
 }
 
 // ========================================
-// 步骤 3 & 4：调用 GLM-5V-Turbo API（核心逻辑）
+// 步骤 3 & 4：调用模型 API（核心逻辑）
 // ========================================
 
 /**
- * 单次调用智谱 GLM-5V-Turbo，同时完成：
+ * 单次调用智谱模型，同时完成：
  *   - 视觉理解：分析 UI 截图的布局、配色、组件特征
  *   - 文本生成：根据规范直接输出完整的异常状态 HTML 代码
  *
@@ -618,7 +612,7 @@ ${files.map((f) => `- ${f.name}`).join("\n")}
 4. 如需修改配色，可通过 CSS 变量快速调整
 
 ---
-由 Exception State Generator (GLM-5V-Turbo) 自动生成
+由 Exception State Generator 自动生成
 `;
     archive.append(readme, { name: "README.txt" });
 
