@@ -456,37 +456,42 @@ ${guidelines}
     }
   }
 
-  // --- 处理 HTTP 错误状态码 ---
-  if (!response.ok) {
-    let errorDetail = "";
-    try {
-      errorDetail = await response.text();
-    } catch {
-      errorDetail = "无法读取错误详情";
+  console.log('[API] Status:', response.status);
+  console.log('[API] Content-Type:', response.headers.get('content-type'));
+
+  const rawText = await response.text();
+  console.log('[API] Body (first 800 chars):', rawText.substring(0, 800));
+
+  const contentType = response.headers.get('content-type') || '';
+
+  // --- 处理 HTTP 错误状态码或非 JSON 响应 ---
+  if (!response.ok || !contentType.includes('application/json')) {
+    const errorInfo = `Status: ${response.status}, Content-Type: ${contentType}, Body: ${rawText.substring(0, 500)}`;
+    console.error('[API] 响应异常:', errorInfo);
+
+    if (!response.ok) {
+      const statusMessages = {
+        401: "API 密钥无效或已过期，请联系管理员检查 ZHIPU_API_KEY 配置",
+        403: "API 调用被拒绝，请检查账户余额或 API 权限",
+        429: "API 调用频率超限，请稍后再试",
+        500: "智谱 AI 服务暂时不可用，请稍后重试",
+        503: "智谱 AI 服务正在维护中，请稍后再试",
+      };
+      const friendlyMessage =
+        statusMessages[response.status] ||
+        `智谱 AI 接口返回错误（${errorInfo})`;
+      throw new Error(friendlyMessage);
     }
-    console.error("[Zhipu API] HTTP 错误:", response.status, errorDetail);
 
-    // 根据常见状态码返回友好提示
-    const statusMessages = {
-      401: "API 密钥无效或已过期，请联系管理员检查 ZHIPU_API_KEY 配置",
-      403: "API 调用被拒绝，请检查账户余额或 API 权限",
-      429: "API 调用频率超限，请稍后再试",
-      500: "智谱 AI 服务暂时不可用，请稍后重试",
-      503: "智谱 AI 服务正在维护中，请稍后再试",
-    };
-    const friendlyMessage =
-      statusMessages[response.status] ||
-      `智谱 AI 接口返回错误（HTTP ${response.status}）：${errorDetail}`;
-
-    throw new Error(friendlyMessage);
+    throw new Error(`AI 服务返回了非 JSON 响应（${errorInfo}）`);
   }
 
-  // --- 解析响应 ---
+  // --- 解析 JSON 响应 ---
   let result;
   try {
-    result = await response.json();
+    result = JSON.parse(rawText);
   } catch (parseError) {
-    throw new Error("AI 服务返回了无效的响应格式，无法解析");
+    throw new Error(`AI 服务返回了无效的 JSON 格式（Body 前 500 字符: ${rawText.substring(0, 500)}）`);
   }
 
   // 提取 AI 生成的文本内容
