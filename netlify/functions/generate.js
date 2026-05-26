@@ -89,6 +89,7 @@ exports.handler = async (event, context) => {
     const guidelinesText = readGuidelinesFile();
 
     // 4. 调用模型：一次性完成视觉分析 + HTML 生成
+    const model = process.env.ZHIPU_MODEL || 'glm-4.6v';
     console.log(`[generate] 开始调用 ${model} 生成异常状态...`);
     const files = await callGLMAPI(image, guidelinesText);
 
